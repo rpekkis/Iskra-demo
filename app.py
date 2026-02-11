@@ -6,17 +6,15 @@ import time
 # Iskra Branding
 st.set_page_config(page_title="ISKRA | ISR Dashboard", layout="wide")
 
-# Koordinaattipisteet (Hersonin rintama)
-KHERSON_CITY = [46.6394, 32.6139] # Länsiranta (Ukrainan hallussa)
-# Dnepr-joen itäpuoli (TOT - Miehitetty alue) alkaa n. pituudesta 32.65 ->
-TOT_LAT_RANGE = (46.55, 46.70)
-TOT_LON_RANGE = (32.68, 32.85)
+# Koordinaatit (Hersonin rintama)
+# Dnepr-joen itäpuoli (TOT - Miehitetty alue)
+TOT_LAT_RANGE = (46.58, 46.70)
+TOT_LON_RANGE = (32.70, 32.85)
 
 # --- ISTUNNON ALUSTUS ---
 if 'log' not in st.session_state:
     st.session_state.log = []
 if 'map_data' not in st.session_state:
-    # Erotetaan Drone (ilmassa) ja Launch Spot (maassa)
     st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'type', 'color', 'size'])
 
 # --- SIVUPALKKI ---
@@ -30,33 +28,32 @@ if st.sidebar.button("Clear Tactical Data"):
     st.session_state.log = []
     st.rerun()
 
-# --- AUTOMAATIO-LOGIIKKA (Realistinen sijoittelu) ---
+# --- AUTOMAATIO-LOGIIKKA ---
 if auto_mode:
-    # 1. Luodaan laukaisupaikka joen ITÄPUOLELLE (Punainen ympyrä)
-    launch_lat = np.random.uniform(*TOT_LAT_RANGE)
-    launch_lon = np.random.uniform(*TOT_LON_RANGE)
+    # 1. Laukaisupaikka ITÄPUOLELLE (Punainen)
+    launch_lat = np.random.uniform(TOT_LAT_RANGE[0], TOT_LAT_RANGE[1])
+    launch_lon = np.random.uniform(TOT_LON_RANGE[0], TOT_LON_RANGE[1])
     
-    # 2. Luodaan drone-havainto hieman lähemmäs kaupunkia (Valkoinen piste)
+    # 2. Drone-havainto (Valkoinen) - liikkuu kohti kaupunkia (länteen)
     drone_lat = launch_lat + np.random.uniform(-0.01, 0.01)
-    drone_lon = launch_lon - np.random.uniform(0.01, 0.03) # Drone liikkuu länteen kohti Hersonia
+    drone_lon = launch_lon - np.random.uniform(0.04, 0.08) 
     
-    # Lisätään molemmat kartalle
+    # Lisätään data
     new_rows = pd.DataFrame([
-        {'lat': launch_lat, 'lon': launch_lon, 'type': 'Launch Spot', 'color': '#FF0000', 'size': 300}, # Punainen = Kohde
-        {'lat': drone_lat, 'lon': drone_lon, 'type': 'Drone Intercept', 'color': '#FFFFFF', 'size': 80}   # Valkoinen = Havainto
+        {'lat': launch_lat, 'lon': launch_lon, 'type': 'Launch Spot', 'color': '#FF0000', 'size': 350},
+        {'lat': drone_lat, 'lon': drone_lon, 'type': 'Drone Intercept', 'color': '#FFFFFF', 'size': 100}
     ])
     
     st.session_state.map_data = pd.concat([st.session_state.map_data, new_rows], ignore_index=True)
     
     # Lokikirjaus
     timestamp = time.strftime('%H:%M:%S')
-    st.session_state.log.insert(0, f"[{timestamp}] New trajectory back-casted to East Bank (TOT).")
+    st.session_state.log.insert(0, f"[{timestamp}] Trajectory back-casted: Origin at {launch_lon:.3f}E (TOT)")
 
-# --- KARTTA-OSIO ---
+# --- KARTTA ---
 st.subheader("Tactical Situation: Back-Casting Launch Origins")
-st.markdown("_Red = Predicted Launch Site (East Bank) | White = Intercepted Drone (Airborne)_")
+st.markdown("_Red Dots = Predicted Launch Sites (East Bank/Occupied) | White Dots = Drone Intercepts (In-flight)_")
 
-# Käytetään Streamlitin omaa karttaa väreillä ja kooilla
 st.map(st.session_state.map_data, 
        latitude='lat', 
        longitude='lon', 
@@ -65,25 +62,30 @@ st.map(st.session_state.map_data,
 
 # --- ANALYYSIPANEELI ---
 st.divider()
-c1, c2, c3 = st.columns(3)
+col1, col2, col3 = st.columns(3)
 
-with c1:
+with col1:
     st.subheader("System Logs")
     for entry in st.session_state.log[:3]:
         st.caption(entry)
 
-with c2:
+with col2:
     st.subheader("Intelligence Metrics")
     launch_count = len(st.session_state.map_data[st.session_state.map_data['type'] == 'Launch Spot'])
     st.metric("Confirmed Launch Clusters", launch_count)
-    st.write(f"Monitoring occupied sector: {TOT_LON_RANGE[0]}E - {TOT_LON_RANGE[1]}E")
+    st.caption("AI performing horizon triangulation on intercepted POV video.")
 
-with col3 := c3:
-    st.subheader("Human Safari Prevention")
-    st.write("Target data validation for counter-battery fire.")
-    if st.button("Disseminate to DELTA"):
-        st.success("Coordinates sent to Artillery Units")
+with col3:
+    st.subheader("Human-in-the-Loop")
+    st.write("Vetted local volunteers validating targets.")
+    if len(st.session_state.map_data) > 4:
+        if st.button("Disseminate to DELTA"):
+            st.success("Target coordinates transmitted!")
+            st.balloons()
+    else:
+        st.info("Gathering more data for validation...")
 
+# Automaattinen päivitys
 if auto_mode:
     time.sleep(refresh_speed)
     st.rerun()
