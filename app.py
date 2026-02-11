@@ -15,7 +15,8 @@ TOT_LON_RANGE = (32.70, 32.85)
 if 'log' not in st.session_state:
     st.session_state.log = []
 if 'map_data' not in st.session_state:
-    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'type', 'color', 'size'])
+    # Huom: Streamlitin st.map vaatii värit usein RGB-listana [R, G, B]
+    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'type', 'r', 'g', 'b', 'size'])
 
 # --- SIVUPALKKI ---
 st.sidebar.title("⚡ ISKRA SYSTEM")
@@ -24,24 +25,24 @@ auto_mode = st.sidebar.toggle("Live Ingestion", value=True)
 refresh_speed = st.sidebar.slider("Scan Speed (s)", 2, 10, 5)
 
 if st.sidebar.button("Clear Tactical Data"):
-    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'type', 'color', 'size'])
+    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'type', 'r', 'g', 'b', 'size'])
     st.session_state.log = []
     st.rerun()
 
 # --- AUTOMAATIO-LOGIIKKA ---
 if auto_mode:
-    # 1. Laukaisupaikka ITÄPUOLELLE (Punainen)
+    # 1. Laukaisupaikka ITÄPUOLELLE (Punainen: 255, 0, 0)
     launch_lat = np.random.uniform(TOT_LAT_RANGE[0], TOT_LAT_RANGE[1])
     launch_lon = np.random.uniform(TOT_LON_RANGE[0], TOT_LON_RANGE[1])
     
-    # 2. Drone-havainto (Valkoinen) - liikkuu kohti kaupunkia (länteen)
+    # 2. Drone-havainto (Valkoinen: 255, 255, 255) - liikkuu kohti kaupunkia
     drone_lat = launch_lat + np.random.uniform(-0.01, 0.01)
     drone_lon = launch_lon - np.random.uniform(0.04, 0.08) 
     
-    # Lisätään data
+    # Lisätään data uusin säännöin
     new_rows = pd.DataFrame([
-        {'lat': launch_lat, 'lon': launch_lon, 'type': 'Launch Spot', 'color': '#FF0000', 'size': 350},
-        {'lat': drone_lat, 'lon': drone_lon, 'type': 'Drone Intercept', 'color': '#FFFFFF', 'size': 100}
+        {'lat': launch_lat, 'lon': launch_lon, 'type': 'Launch Spot', 'r': 255, 'g': 0, 'b': 0, 'size': 350},
+        {'lat': drone_lat, 'lon': drone_lon, 'type': 'Drone Intercept', 'r': 255, 'g': 255, 'b': 255, 'size': 100}
     ])
     
     st.session_state.map_data = pd.concat([st.session_state.map_data, new_rows], ignore_index=True)
@@ -52,13 +53,14 @@ if auto_mode:
 
 # --- KARTTA ---
 st.subheader("Tactical Situation: Back-Casting Launch Origins")
-st.markdown("_Red Dots = Predicted Launch Sites (East Bank/Occupied) | White Dots = Drone Intercepts (In-flight)_")
+st.markdown("_Red Dots = Predicted Launch Sites (East Bank) | White Dots = Drone Intercepts (Airborne)_")
 
+# Streamlit st.map osaa lukea sarakkeet 'r', 'g', 'b' automaattisesti jos niitä käytetään
 st.map(st.session_state.map_data, 
        latitude='lat', 
        longitude='lon', 
-       size='size', 
-       color='color')
+       size='size',
+       color=['r', 'g', 'b']) # Ohjataan Streamlit käyttämään näitä värisarakkeita
 
 # --- ANALYYSIPANEELI ---
 st.divider()
