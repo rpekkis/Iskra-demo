@@ -1,92 +1,105 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pydeck as pdk
 import time
 
+# --- KONFIGURAATIO ---
 st.set_page_config(page_title="ISKRA | ISR System", layout="wide")
 
-# --- MAANTIETEEN MÄÄRITTELY ---
+# Koordinaatit (Hersonin rintama)
 KHERSON_LAT, KHERSON_LON = 46.6394, 32.6139
 TOT_LAT_RANGE = (46.50, 46.61) # Eteläpuoli (Miehitetty)
 TOT_LON_RANGE = (32.65, 32.85)
 
 # --- ALUSTUS ---
 if 'map_data' not in st.session_state:
-    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'type', 'confidence', 'color'])
-if 'current_fpv' not in st.session_state:
-    st.session_state.current_fpv = {"id": "N/A", "status": "Scanning..."}
+    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'confidence', 'hex_color', 'size'])
+if 'fpv_status' not in st.session_state:
+    st.session_state.fpv_status = "Scanning Frequencies..."
 
-# --- AUTOMAATIO (Jatkuva taustaprosessi) ---
-# Simuloidaan uutta havaintoa
+# --- AUTOMAATIO (Simuloidaan havaintoja) ---
 new_lat = np.random.uniform(*TOT_LAT_RANGE)
 new_lon = np.random.uniform(*TOT_LON_RANGE)
-conf = np.random.randint(75, 99)
+conf_val = np.random.randint(78, 99)
 
 new_entry = pd.DataFrame([{
-    'lat': new_lat, 'lon': new_lon, 
-    'type': 'Launch Site', 
-    'confidence': f"{conf}%",
-    'color': [255, 0, 0, 150] # RGBA punainen
+    'lat': new_lat, 
+    'lon': new_lon, 
+    'confidence': conf_val,
+    'hex_color': '#FF0000', 
+    'size': 400
 }])
 
 st.session_state.map_data = pd.concat([st.session_state.map_data, new_entry], ignore_index=True)
-st.session_state.current_fpv = {"id": f"FPV-{np.random.randint(1000, 9999)}", "conf": f"{conf}%"}
+if len(st.session_state.map_data) > 20:
+    st.session_state.map_data = st.session_state.map_data.iloc[1:]
 
 # --- KÄYTTÖLIITTYMÄ ---
-st.title("⚡ ISKRA Intelligence Suite")
+st.title("⚡ ISKRA | Geospatial ISR Suite")
 
-# Välilehdet
-tab1, tab2 = st.tabs(["🌐 Strategic Map", "🎥 Live FPV Intercept"])
+tab1, tab2 = st.tabs(["🌐 Strategic Map", "🎥 Live FPV Back-Casting"])
 
 with tab1:
-    st.subheader("Autonomous Back-Casting Overview")
-    st.caption("Hover over red zones to see AI Confidence Scores. Data is disseminated to DELTA automatically.")
+    col_map, col_stats = st.columns([3, 1])
     
-    # Pydeck-kartta (Sallii hover-tiedon näyttämisen)
-    view_state = pdk.ViewState(latitude=KHERSON_LAT, longitude=KHERSON_LON + 0.05, zoom=10.5, pitch=45)
+    with col_map:
+        st.subheader("Autonomous Launch Site Identification")
+        # Natiivi st.map on kaikkein varmin valinta tässä ympäristössä
+        st.map(st.session_state.map_data, 
+               latitude='lat', 
+               longitude='lon', 
+               size='size', 
+               color='hex_color')
     
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        st.session_state.map_data,
-        get_position='[lon, lat]',
-        get_color='color',
-        get_radius=400,
-        pickable=True, # Tämä mahdollistaa tiedon näkemisen
-    )
-
-    st.pydeck_chart(pdk.Deck(
-        map_style='mapbox://styles/mapbox/dark-v10',
-        initial_view_state=view_state,
-        layers=[layer],
-        tooltip={"text": "Target: {type}\nConfidence: {confidence}"}
-    ))
-    
-    st.info(f"System Status: Active | Targets identified: {len(st.session_state.map_data)}")
-
+    with col_stats:
+        st.subheader("Target Intelligence")
+        if not st.session_state.map_data.empty:
+            latest = st.session_state.map_data.iloc[-1]
+            st.metric("Latest Target Confidence", f"{latest['confidence']}%")
+            st.metric("Total Identified Clusters", len(st.session_state.map_data))
+            st.write("---")
+            st.write("**Recent Coordinates (TOT):**")
+            st.dataframe(st.session_state.map_data[['lat', 'lon', 'confidence']].tail(5), hide_index=True)
+        
 with tab2:
-    col1, col2 = st.columns([2, 1])
+    c1, c2 = st.columns([2, 1])
     
-    with col1:
-        st.subheader("Simulated Video Feed")
-        # Käytetään Kherson-aiheista kuvaa simuloimaan videota
-        st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", use_container_width=True)
-        st.caption(f"Analyzing horizon landmarks for feed: {st.session_state.current_fpv['id']}")
-    
-    with col2:
-        st.subheader("Telemetry Analysis")
-        st.metric("Signal ID", st.session_state.current_fpv['id'])
-        st.metric("Back-casting Confidence", st.session_state.current_fpv['conf'])
-        st.write("---")
-        st.write("**AI Metadata Extraction:**")
-        st.code("""
-{
-  "status": "Target_Identified",
-  "sector": "South_Bank_Kherson",
-  "dissemination": "AUTO_DELTA_PUSH"
-}
+    with c1:
+        st.subheader("Intercepted Video Stream (Simulated)")
+        # Simuloidaan "videota" dynaamisella kohinalla ja tekstigrafiikalla
+        placeholder = st.empty()
+        
+        # Luodaan visuaalinen "hacker/military" feed
+        scan_line = "|" * np.random.randint(20, 50)
+        st.code(f"""
+        [SIGNAL_STRENGTH: {np.random.randint(60,95)}%]
+        [DECODING_FRAME... OK]
+        [LANDMARK_RECOGNITION: ACTIVE]
+        [TRIANGULATING_HORIZON: {np.random.uniform(10,20):.2f}°]
+        -----------------------------------------
+        {scan_line}
+        DETECTED: TREELINE_SECTOR_4
+        MATCH_PROBABILITY: {conf_val}%
+        ESTIMATED_ORIGIN: {new_lat:.4f}, {new_lon:.4f}
+        -----------------------------------------
+        STATUS: PUSHING_TO_DELTA_CORE...
         """)
+        
+        # Lisätään kuva Khersonista antamaan kontekstia "videolle"
+        st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", 
+                 caption="AI Perspective: Horizon landmarking from POV signal", use_container_width=True)
 
-# Automaattinen päivitys (St.rerun pitää huolen dynaamisuudesta)
+    with c2:
+        st.subheader("Metadata Extraction")
+        st.json({
+            "sensor_id": f"ISR-NODE-{np.random.randint(100,999)}",
+            "detected_at": time.strftime("%H:%M:%S"),
+            "location_sector": "South_Bank_Kherson",
+            "back_cast_result": "Success",
+            "confidence_score": f"{conf_val}%"
+        })
+        st.success("Targeting data disseminated to DELTA automatically.")
+
+# Automaattinen päivitys
 time.sleep(5)
 st.rerun()
