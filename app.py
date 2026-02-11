@@ -1,99 +1,82 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import folium
-from streamlit_folium import st_folium
 import time
 
-# Iskra Branding
-st.set_page_config(page_title="Iskra Autonomous ISR", layout="wide")
+# Iskra-konseptin mukainen ulkoasu
+st.set_page_config(page_title="ISKRA | ISR Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# Hersonin koordinaatit
+# Hersonin koordinaatit (Kherson TOT - Temporarily Occupied Territories)
 KHERSON_LAT = 46.6394
 KHERSON_LON = 32.6139
 
-st.title("⚡ ISKRA - Autonomous Drone Intelligence")
-st.markdown("Automated back-casting from live sensor feeds. Monitoring Kherson TOT sector.")
-
-# Alustetaan historia session_stateen
-if 'history' not in st.session_state:
-    st.session_state.history = []
+# --- ISTUNNON ALUSTUS ---
+if 'log' not in st.session_state:
+    st.session_state.log = []
+if 'map_data' not in st.session_state:
+    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'weight'])
 
 # --- SIVUPALKKI ---
-st.sidebar.header("System Controls")
-run_auto = st.sidebar.toggle("Enable Autonomous Monitoring", value=True)
-scan_speed = st.sidebar.slider("Scan Speed (Seconds)", 2, 10, 5)
+st.sidebar.title("⚡ ISKRA SYSTEM")
+st.sidebar.status("Connected to EW Sensors")
+auto_mode = st.sidebar.toggle("Live Intelligence Ingestion", value=True)
+refresh_speed = st.sidebar.slider("Scan Frequency (s)", 2, 10, 4)
 
-if st.sidebar.button("🧹 Clear Intelligence Data"):
-    st.session_state.history = []
+if st.sidebar.button("Clear Tactical Data"):
+    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'weight'])
+    st.session_state.log = []
     st.rerun()
 
-# --- AUTOMAATIO-LOGIIKKA ---
-if run_auto:
-    # Simuloidaan uusi havainto vihollisen puolelta
-    new_point = {
-        'lat': KHERSON_LAT + np.random.uniform(-0.015, 0.015),
-        'lon': KHERSON_LON + np.random.uniform(0.02, 0.05),
-        'id': len(st.session_state.history) + 1,
-        'time': time.strftime('%H:%M:%S')
-    }
-    st.session_state.history.append(new_point)
-    # Pidetään historia kohtuullisena
-    if len(st.session_state.history) > 20:
-        st.session_state.history.pop(0)
+# --- PÄÄNÄKYMÄ ---
+st.title("Iskra: Geospatial Intelligence & Back-Casting")
+st.markdown(f"**Sector:** Kherson Region | **Status:** Monitoring TOT (Temporarily Occupied Territories)")
 
-# --- KARTAN LUONTI (FOLIUM) ---
-# Luodaan peruskartta (OpenStreetMap toimii aina ilman avaimia)
-m = folium.Map(location=[KHERSON_LAT, KHERSON_LON + 0.02], zoom_start=12, tiles="OpenStreetMap")
-
-# Lisätään havainnot kartalle
-for p in st.session_state.history:
-    # Viiva kaupungista havaintopisteeseen (Back-casting viiva)
-    folium.PolyLine(
-        locations=[[KHERSON_LAT, KHERSON_LON], [p['lat'], p['lon']]],
-        color="red",
-        weight=2,
-        opacity=0.5
-    ).add_to(m)
+# --- AUTOMAATIO-LOGIIKKA (Simuloidaan sensorisyötettä) ---
+if auto_mode:
+    # Luodaan uusi oletettu laukaisupiste (Back-casted point)
+    new_lat = KHERSON_LAT + np.random.uniform(-0.012, 0.012)
+    new_lon = KHERSON_LON + np.random.uniform(0.02, 0.045)
     
-    # Itse havaintopiste (Heatmap-piste)
-    folium.CircleMarker(
-        location=[p['lat'], p['lon']],
-        radius=10,
-        color="orange",
-        fill=True,
-        fill_color="red",
-        popup=f"Drone ID: {p['id']} Detected at {p['time']}"
-    ).add_to(m)
+    new_row = pd.DataFrame({'lat': [new_lat], 'lon': [new_lon], 'weight': [1]})
+    st.session_state.map_data = pd.concat([st.session_state.map_data, new_row], ignore_index=True)
+    
+    # Lisätään lokiin tapahtuma
+    timestamp = time.strftime('%H:%M:%S')
+    st.session_state.log.insert(0, f"[{timestamp}] Intercepted FPV feed: Back-casting successful. Confidence {np.random.randint(88,99)}%")
 
-# Näytetään kartta
-st_folium(m, width="100%", height=500)
+# --- KARTTA-OSIO ---
+# Käytetään Streamlitin omaa natiivia karttaa (luotettavin)
+st.subheader("Live Heatmap of Potential Launch Spots")
+st.map(st.session_state.map_data, latitude='lat', longitude='lon', size=150, color='#FF4B4B')
 
-# --- DASHBOARD ---
+# --- DASHBOARDIN ALAKERRAN KOLUMNI-JAOTELMA ---
 st.divider()
-col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns([1, 1, 1])
 
 with col1:
-    st.subheader("Live Sensor Feed")
-    st.write(f"Active Drones Tracked: {len(st.session_state.history)}")
-    if st.session_state.history:
-        st.info(f"Latest intercept: {st.session_state.history[-1]['time']}")
+    st.subheader("Live Event Log")
+    for entry in st.session_state.log[:5]:
+        st.caption(entry)
 
 with col2:
-    st.subheader("Back-Casting Engine")
-    if st.session_state.history:
-        st.metric("AI Confidence", f"{np.random.randint(85, 99)}%", "High")
-        st.caption("Triangulating origin using horizon analysis.")
+    st.subheader("ISR Analytics")
+    if not st.session_state.map_data.empty:
+        st.metric("Detected Launch Points", len(st.session_state.map_data))
+        st.metric("Avg. System Confidence", f"{np.random.randint(92, 97)}%", "+1.2%")
+    else:
+        st.write("Awaiting data...")
 
 with col3:
-    st.subheader("Intelligence Output")
-    if len(st.session_state.history) > 5:
-        st.success("Launch Cluster Identified")
-        st.button("Export to DELTA System")
+    st.subheader("Human-in-the-Loop")
+    st.write("Vetted local volunteers reviewing intercepts.")
+    if len(st.session_state.map_data) > 3:
+        if st.button("Disseminate to DELTA"):
+            st.balloons()
+            st.success("Targeting insights sent to Unified Operational Picture")
     else:
-        st.warning("Gathering baseline data...")
+        st.info("Insufficient data for target validation.")
 
 # Automaattinen päivitys
-if run_auto:
-    time.sleep(scan_speed)
+if auto_mode:
+    time.sleep(refresh_speed)
     st.rerun()
