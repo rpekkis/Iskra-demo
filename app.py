@@ -13,13 +13,13 @@ KHERSON_LAT, KHERSON_LON = 46.6394, 32.6139
 TOT_LAT_RANGE = (46.50, 46.61) 
 TOT_LON_RANGE = (32.65, 32.85)
 
-# --- Session State alustus ---
+# --- Session State alustus (Aloitus nollasta) ---
 if 'all_targets' not in st.session_state:
     st.session_state.all_targets = []
 if 'last_update' not in st.session_state:
     st.session_state.last_update = time.time()
 
-# --- Automaattinen havaintojen generointi (5s välein) ---
+# --- Automaattinen havaintojen generointi (Intercept & Ingest) ---
 current_time = time.time()
 if current_time - st.session_state.last_update > 5:
     new_id = f"FPV-{len(st.session_state.all_targets) + 101}"
@@ -36,19 +36,22 @@ if current_time - st.session_state.last_update > 5:
 
 # --- Yläosa ---
 st.title("ISKRA | Battlefield Intelligence Suite")
-st.markdown(f"System Status: Active | Live Intercepts: {len(st.session_state.all_targets)}")
+st.markdown(f"System Status: Active | API Outbound: DELTA Integrated")
 
-tab1, tab2, tab3 = st.tabs(["Strategic Map (UOP)", "Edge Layer: Intercept", "Interface Layer: Moderator"])
+# Välilehdet prosessikaaviosi mukaisesti
+tab1, tab2, tab3 = st.tabs([
+    "Heatmap Aggregation", 
+    "Intercept & Backcasting", 
+    "Human Moderation Layer"
+])
 
-# --- Tab 1: Strateginen kartta ---
+# --- VÄLILEHTI 1: Heatmap Aggregation & Dissemination ---
 with tab1:
-    st.subheader("Real-Time Heatmap Aggregation")
+    st.subheader("Dissemination to Operational Picture")
     
-    # Luodaan karttaobjekti vain kerran ja lisätään pisteet
     m = folium.Map(location=[KHERSON_LAT - 0.05, KHERSON_LON + 0.1], 
                    zoom_start=11, 
-                   tiles='cartodbpositron',
-                   control_scale=True)
+                   tiles='cartodbpositron')
     
     for t in st.session_state.all_targets:
         color = 'green' if t['status'] == 'Confirmed' else 'gray' if t['status'] == 'False Positive' else 'red'
@@ -61,54 +64,58 @@ with tab1:
             popup=f"ID: {t['id']} | Status: {t['status']}"
         ).add_to(m)
     
-    # st_folium piirtää kartan. key-parametri auttaa Streamlitiä tunnistamaan saman komponentin
-    st_folium(m, width="100%", height=500, returned_objects=[], key="main_map")
+    st_folium(m, width="100%", height=550, returned_objects=[], key="main_map")
+    
+    # Tilastot (Operational Picture)
+    c1, c2 = st.columns(2)
+    c1.metric("Confirmed Targets", len([t for t in st.session_state.all_targets if t['status'] == 'Confirmed']))
+    c2.metric("Pending Validation", len([t for t in st.session_state.all_targets if t['status'] == 'Pending']))
 
-# --- Tab 2: Edge Layer (Dronen valinta) ---
+# --- VÄLILEHTI 2: Intercept & Backcasting ---
 with tab2:
     col_v, col_d = st.columns([2, 1])
     
     with col_v:
-        st.subheader("Live Signal Ingest")
+        st.subheader("Raw Signal Ingest")
         st.video("https://www.sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4")
+        st.caption("Video Processing & Frame Extraction Active")
         
     with col_d:
-        st.subheader("Backcasting Telemetry")
+        st.subheader("Geospatial Backcasting")
         if st.session_state.all_targets:
-            # Mahdollisuus valita drone tarkasteltavaksi edge layerissa
             drone_ids = [t['id'] for t in st.session_state.all_targets]
-            selected_drone_id = st.selectbox("Select Intercept for Analysis", drone_ids, key="edge_select")
+            selected_drone_id = st.selectbox("Select Signal Stream", drone_ids, key="edge_select")
             
             selected_drone = next(t for t in st.session_state.all_targets if t['id'] == selected_drone_id)
             
-            st.metric("Signal ID", selected_drone['id'])
-            st.code(f"COORD: {selected_drone['lat']:.4f}, {selected_drone['lon']:.4f}\nTIME: {selected_drone['timestamp']}\nCONF: {selected_drone['conf']}%")
+            st.metric("Detection Confidence", f"{selected_drone['conf']}%")
+            st.code(f"LAT: {selected_drone['lat']:.4f}\nLON: {selected_drone['lon']:.4f}\nTIME: {selected_drone['timestamp']}")
         else:
-            st.write("Searching for EW transients...")
+            st.write("Awaiting EW Trigger...")
 
-# --- Tab 3: Moderator ---
+# --- VÄLILEHTI 3: Human Moderation Layer ---
 with tab3:
     st.subheader("Validator Consensus Engine")
     
     pending_targets = [t for t in st.session_state.all_targets if t['status'] == 'Pending']
     
     if not pending_targets:
-        st.write("No unverified clusters in queue. New data arriving automatically.")
+        st.write("Consensus reached on all current intercepts. Waiting for new ingest data.")
     else:
-        # Dronen valinta validointia varten
-        target_options = {f"{t['id']} (AI Conf: {t['conf']}%)": t['id'] for t in pending_targets}
-        selected_label = st.selectbox("Assign cluster for verification:", options=list(target_options.keys()), key="mod_select")
+        # Valinta moderation layerissa
+        target_options = {f"{t['id']} (AI Confidence: {t['conf']}%)": t['id'] for t in pending_targets}
+        selected_label = st.selectbox("Assign cluster for human verification:", options=list(target_options.keys()), key="mod_select")
         selected_id = target_options[selected_label]
         
         current = next(t for t in st.session_state.all_targets if t['id'] == selected_id)
         
-        st.write(f"Reviewing {current['id']}: Current Consensus {current['votes']}/3 Votes")
+        st.write(f"Vetting {current['id']} | Current Consensus: {current['votes']}/3 Votes")
         
         v_col1, v_col2 = st.columns(2)
         with v_col1:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", caption="Intercept Still")
+            st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", caption="Frame Extraction (Still)")
         with v_col2:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", caption="Satellite Reference")
+            st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", caption="Satellite Reference (AO)")
 
         st.divider()
         
@@ -122,9 +129,8 @@ with tab3:
                 current['votes'] += 1
                 if current['votes'] >= 3:
                     current['status'] = 'Confirmed'
-                    st.success(f"{current['id']} Confirmed")
                 st.rerun()
 
-# Automaattinen päivitys
+# Automaattinen päivitys (pitää prosessin käynnissä)
 time.sleep(1)
 st.rerun()
