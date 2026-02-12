@@ -1,5 +1,5 @@
 import streamlit as st
-import pd
+import pandas as pd
 import numpy as np
 import folium
 from streamlit_folium import st_folium
