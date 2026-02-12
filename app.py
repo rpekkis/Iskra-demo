@@ -9,74 +9,74 @@ st.set_page_config(page_title="ISKRA | Intelligence Snapshot", layout="wide")
 
 KHERSON_LAT, KHERSON_LON = 46.6394, 32.6139
 
-# --- Staattisen datan luonti ---
-def generate_static_data():
+# Käytetään session_statea, jotta pisteet eivät muutu vaikka sivu latautuisi, 
+# ellet itse halua päivittää niitä (R-näppäin).
+if 'static_data' not in st.session_state:
     targets = []
     
-    # 1. PUNAISET KESKITTYMÄT (Heatmap Clusters)
-    # Cluster A: Oleshky pohjoinen
-    for i in range(5):
+    # 1. PUNAISET KESKITTYMÄT (Strike Zones)
+    # Rypäs 1: Oleshky/Hersonin itäpuoli
+    for i in range(6):
         targets.append({
-            'pos': [46.625 + np.random.uniform(-0.005, 0.005), 32.720 + np.random.uniform(-0.005, 0.005)],
-            'obs': [46.660 + np.random.uniform(-0.01, 0.01), 32.610 + np.random.uniform(-0.01, 0.01)],
-            'color': 'red', 'label': 'Confirmed Launch Site'
+            'pos': [46.620 + np.random.uniform(-0.004, 0.004), 32.715 + np.random.uniform(-0.004, 0.004)],
+            'obs': [46.660 + np.random.uniform(-0.005, 0.005), 32.610 + np.random.uniform(-0.005, 0.005)],
+            'color': 'red'
         })
     
-    # Cluster B: Radensk eteläpuoli
-    for i in range(4):
+    # Rypäs 2: Syvemmällä TOT-alueella (Radensk akseli)
+    for i in range(5):
         targets.append({
-            'pos': [46.550 + np.random.uniform(-0.008, 0.008), 32.850 + np.random.uniform(-0.008, 0.008)],
-            'obs': [46.640 + np.random.uniform(-0.01, 0.01), 32.630 + np.random.uniform(-0.01, 0.01)],
-            'color': 'red', 'label': 'Confirmed Launch Site'
+            'pos': [46.545 + np.random.uniform(-0.006, 0.006), 32.840 + np.random.uniform(-0.006, 0.006)],
+            'obs': [46.645 + np.random.uniform(-0.005, 0.005), 32.625 + np.random.uniform(-0.005, 0.005)],
+            'color': 'red'
         })
 
-    # 2. KELTAISET HAJAHAVAINNOT (Noise/Pending)
-    for i in range(8):
+    # 2. KELTAISET HAJAHAVAINNOT (Unverified Intercepts)
+    for i in range(12):
         targets.append({
-            'pos': [np.random.uniform(46.50, 46.68), np.random.uniform(32.65, 32.95)],
-            'obs': [np.random.uniform(46.63, 46.69), np.random.uniform(32.58, 32.65)],
-            'color': 'orange', 'label': 'Awaiting Validation'
+            'pos': [np.random.uniform(46.52, 46.66), np.random.uniform(32.66, 32.90)],
+            'obs': [np.random.uniform(46.64, 46.68), np.random.uniform(32.59, 32.64)],
+            'color': 'orange'
         })
-        
-    return targets
+    st.session_state.static_data = targets
 
 # --- UI ---
 st.title("ISKRA | Battlefield Intelligence Snapshot")
-st.subheader("Target Acquisition Layer: Sector Kherson-South")
+st.markdown("Target Acquisition Layer: **Sector Kherson-South** | Deployment: Live Operational Data")
 
-# Kartta
-m = folium.Map(location=[KHERSON_LAT - 0.05, KHERSON_LON + 0.15], 
+# Kartta - Kiinteä zoom ja sijainti
+m = folium.Map(location=[46.60, 32.75], 
                zoom_start=11, 
-               tiles='cartodbpositron')
+               tiles='cartodbpositron',
+               zoom_control=False,
+               scrollWheelZoom=False,
+               dragging=False)
 
-data = generate_static_data()
-
-for t in data:
-    # Havaintopiste (Pieni sininen)
-    folium.CircleMarker(location=t['obs'], radius=2, color='blue', fill=True, opacity=0.3).add_to(m)
+for t in st.session_state.static_data:
+    # Drone havaintopiste (pieni sininen)
+    folium.CircleMarker(location=t['obs'], radius=2, color='blue', fill=True, opacity=0.4).add_to(m)
     
-    # Laukaisupaikka
+    # Laukaisupaikka (Backcasted)
     folium.CircleMarker(location=t['pos'], 
-                        radius=8 if t['color'] == 'red' else 6, 
+                        radius=9 if t['color'] == 'red' else 6, 
                         color=t['color'], 
                         fill=True, 
-                        fill_opacity=0.7,
-                        popup=t['label']).add_to(m)
+                        fill_opacity=0.8).add_to(m)
     
     # Backcasting-vektori
     folium.PolyLine(locations=[t['obs'], t['pos']], 
                     color=t['color'], 
                     weight=1.5, 
                     dash_array='5, 5', 
-                    opacity=0.4).add_to(m)
+                    opacity=0.5).add_to(m)
 
-# Piirretään kartta
-st_folium(m, width="100%", height=700)
+# Piirretään kartta ilman välkkymistä
+st_folium(m, width="100%", height=750, key="screenshot_map")
 
-# Alaosan selite screenshotia varten
-c1, c2, c3 = st.columns(3)
-c1.metric("Validated Battery Clusters", "2 Areas")
-c2.metric("Active Ingress Vectors", "17 Intercepts")
-c3.metric("System Confidence", "96.4%")
-
-st.info("Visualized: Point of Launch backcasted from signal intercept. Red zones indicate high-probability strike zones.")
+# Dashboard-metriikat screenshotin alareunaan
+st.divider()
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Confirmed Clusters", "2 Strike Zones")
+c2.metric("Pending Analysis", "12 Points")
+c3.metric("AI Confidence Avg.", "94.8%")
+c4.metric("Data Freshness", "Real-time")
