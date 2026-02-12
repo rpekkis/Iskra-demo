@@ -8,25 +8,32 @@ import time
 # --- Konfiguraatio ---
 st.set_page_config(page_title="ISKRA | Strategic ISR Intelligence", layout="wide", initial_sidebar_state="collapsed")
 
-# Koordinaatit (Herson / TOT-sektori)
+# Koordinaatit
 KHERSON_LAT, KHERSON_LON = 46.6394, 32.6139
-TOT_LAT_RANGE = (46.50, 46.61) 
+WEST_BANK_LAT_RANGE = (46.62, 46.68) # Dnipron länsipuoli (Havainto)
+WEST_BANK_LON_RANGE = (32.58, 32.63)
+TOT_LAT_RANGE = (46.50, 46.61)       # Dnipron itäpuoli / TOT (Laukaisupaikka)
 TOT_LON_RANGE = (32.65, 32.85)
 
-# --- Session State alustus (Aloitus nollasta) ---
+# --- Session State alustus ---
 if 'all_targets' not in st.session_state:
     st.session_state.all_targets = []
 if 'last_update' not in st.session_state:
     st.session_state.last_update = time.time()
 
-# --- Automaattinen havaintojen generointi (5s välein) ---
+# --- Automaattinen havaintojen generointi (17s välein) ---
 current_time = time.time()
-if current_time - st.session_state.last_update > 5:
+if current_time - st.session_state.last_update > 17:
     new_id = f"FPV-{len(st.session_state.all_targets) + 101}"
+    
+    # Arvotaan havaintopaikka (Länsi) ja laukaisupaikka (Itä)
+    obs_lat, obs_lon = np.random.uniform(*WEST_BANK_LAT_RANGE), np.random.uniform(*WEST_BANK_LON_RANGE)
+    launch_lat, launch_lon = np.random.uniform(*TOT_LAT_RANGE), np.random.uniform(*TOT_LON_RANGE)
+    
     st.session_state.all_targets.append({
         'id': new_id,
-        'lat': np.random.uniform(*TOT_LAT_RANGE),
-        'lon': np.random.uniform(*TOT_LON_RANGE),
+        'obs_pos': [obs_lat, obs_lon],
+        'launch_pos': [launch_lat, launch_lon],
         'conf': np.random.randint(82, 98),
         'votes': 0,
         'status': 'Pending',
@@ -36,101 +43,104 @@ if current_time - st.session_state.last_update > 5:
 
 # --- Yläosa ---
 st.title("ISKRA | Battlefield Intelligence Suite")
-st.markdown("System Status: Active | API Outbound: DELTA Integrated")
+st.markdown(f"System Status: Active | API Outbound: DELTA Integrated")
 
-# Välilehdet
 tab1, tab2, tab3 = st.tabs([
     "Heatmap Aggregation", 
     "Intercept & Backcasting", 
     "Human Moderation Layer"
 ])
 
-# --- VÄLILEHTI 1: Heatmap Aggregation & Dissemination ---
+# --- VÄLILEHTI 1: Heatmap Aggregation ---
 with tab1:
     st.subheader("Dissemination to Operational Picture")
     
-    m = folium.Map(location=[KHERSON_LAT - 0.05, KHERSON_LON + 0.1], 
-                   zoom_start=11, 
-                   tiles='cartodbpositron')
+    m = folium.Map(location=[KHERSON_LAT - 0.05, KHERSON_LON + 0.1], zoom_start=11, tiles='cartodbpositron')
     
     for t in st.session_state.all_targets:
         color = 'green' if t['status'] == 'Confirmed' else 'gray' if t['status'] == 'False Positive' else 'red'
+        
+        # 1. Piirretään havaintopiste (Drone ilmassa)
         folium.CircleMarker(
-            location=[t['lat'], t['lon']],
+            location=t['obs_pos'],
+            radius=4,
+            color='blue',
+            fill=True,
+            popup=f"Intercept: {t['id']}"
+        ).add_to(m)
+        
+        # 2. Piirretään laukaisupaikka (Backcasted target)
+        folium.CircleMarker(
+            location=t['launch_pos'],
             radius=8,
             color=color,
             fill=True,
             fill_opacity=0.7,
-            popup=f"ID: {t['id']} | Status: {t['status']}"
+            popup=f"ID: {t['id']} | AI Credibility: {t['conf']}% | Status: {t['status']}"
+        ).add_to(m)
+        
+        # 3. Piirretään viiva havainnosta laukaisupaikkaan (Backcasting vector)
+        folium.PolyLine(
+            locations=[t['obs_pos'], t['launch_pos']],
+            color=color,
+            weight=2,
+            dash_array='5, 10',
+            opacity=0.5
         ).add_to(m)
     
     st_folium(m, width="100%", height=550, returned_objects=[], key="main_map")
-    
-    c1, c2 = st.columns(2)
-    c1.metric("Confirmed Targets", len([t for t in st.session_state.all_targets if t['status'] == 'Confirmed']))
-    c2.metric("Pending Validation", len([t for t in st.session_state.all_targets if t['status'] == 'Pending']))
 
 # --- VÄLILEHTI 2: Intercept & Backcasting ---
 with tab2:
     col_v, col_d = st.columns([2, 1])
-    
     with col_v:
         st.subheader("Raw Signal Ingest")
         st.video("https://www.sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4")
-        st.caption("Video Processing & Frame Extraction Active")
-        
     with col_d:
         st.subheader("Geospatial Backcasting")
         if st.session_state.all_targets:
             drone_ids = [t['id'] for t in st.session_state.all_targets]
             selected_drone_id = st.selectbox("Select Signal Stream", drone_ids, key="edge_select")
-            
             selected_drone = next(t for t in st.session_state.all_targets if t['id'] == selected_drone_id)
             
-            st.metric("Detection Confidence", f"{selected_drone['conf']}%")
-            st.code(f"LAT: {selected_drone['lat']:.4f}\nLON: {selected_drone['lon']:.4f}\nTIME: {selected_drone['timestamp']}")
+            st.metric("AI Credibility", f"{selected_drone['conf']}%")
+            st.write(f"**Intercept Pos:** {selected_drone['obs_pos'][0]:.4f}, {selected_drone['obs_pos'][1]:.4f}")
+            st.write(f"**Est. Launch Pos:** {selected_drone['launch_pos'][0]:.4f}, {selected_drone['launch_pos'][1]:.4f}")
         else:
             st.write("Awaiting EW Trigger...")
 
 # --- VÄLILEHTI 3: Human Moderation Layer ---
 with tab3:
     st.subheader("Validator Consensus Engine")
-    
     pending_targets = [t for t in st.session_state.all_targets if t['status'] == 'Pending']
     
     if not pending_targets:
-        st.write("Consensus reached on all current intercepts. Waiting for new ingest data.")
+        st.write("Awaiting new ingest data...")
     else:
-        target_options = {f"{t['id']} (AI Conf: {t['conf']}%)": t['id'] for t in pending_targets}
+        target_options = {f"{t['id']} (Credibility: {t['conf']}%)": t['id'] for t in pending_targets}
         selected_label = st.selectbox("Assign cluster for human verification:", options=list(target_options.keys()), key="mod_select")
         selected_id = target_options[selected_label]
-        
         current = next(t for t in st.session_state.all_targets if t['id'] == selected_id)
         
-        st.write(f"Vetting {current['id']} | Current Consensus: {current['votes']}/3 Votes")
+        st.write(f"Vetting {current['id']} | Consensus: {current['votes']}/3 Votes")
         
-        # --- KORJATTU KUVAN LATAUS ---
         v_col1, v_col2 = st.columns(2)
         with v_col1:
-            # Käytetään yksinkertaisempaa esimerkkikuvaa
-            st.image("https://raw.githubusercontent.com/streamlit/example-app-assets/main/graph.png", caption="Frame Extraction (Still)")
+            try: st.image("drone_still.png", caption="Frame Extraction (Still)")
+            except: st.error("Missing 'drone_still.png'")
         with v_col2:
-            st.image("https://raw.githubusercontent.com/streamlit/example-app-assets/main/graph.png", caption="Satellite Reference (AO)")
+            try: st.image("sat_ref.png", caption="Satellite Reference (AO)")
+            except: st.error("Missing 'sat_ref.png'")
 
-        st.divider()
-        
         c1, c2 = st.columns(2)
         with c1:
             if st.button("REJECT (Swipe Left)", use_container_width=True):
-                current['status'] = 'False Positive'
-                st.rerun()
+                current['status'] = 'False Positive'; st.rerun()
         with c2:
             if st.button("VALIDATE (Swipe Right)", use_container_width=True):
                 current['votes'] += 1
-                if current['votes'] >= 3:
-                    current['status'] = 'Confirmed'
+                if current['votes'] >= 3: current['status'] = 'Confirmed'
                 st.rerun()
 
-# Automaattinen päivitys
 time.sleep(1)
 st.rerun()
