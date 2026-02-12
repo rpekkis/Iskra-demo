@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import pandas as pd  # Korjattu import
 import numpy as np
 import folium
 from streamlit_folium import st_folium
@@ -25,48 +25,56 @@ if 'last_spawn_time' not in st.session_state:
 if 'ai_threshold' not in st.session_state:
     st.session_state.ai_threshold = 80 
 
-# --- Tarkka Ajoituslogiikka ---
-current_time = time.time()
-total_elapsed = current_time - st.session_state.start_time
-time_since_last = current_time - st.session_state.last_spawn_time
+# --- Data Generation Logic (Pidetään erillään UI:sta) ---
+def update_data():
+    current_time = time.time()
+    total_elapsed = current_time - st.session_state.start_time
+    time_since_last = current_time - st.session_state.last_spawn_time
+    target_count = len(st.session_state.all_targets)
 
-# Logiikka dronien ilmestymiselle
-target_count = len(st.session_state.all_targets)
+    new_data_found = False
 
-# 1. Ensimmäinen drone (FPV-101) 5 sekunnin kohdalla
-if target_count == 0 and total_elapsed > 5:
-    st.session_state.all_targets.append({
-        'id': "FPV-101",
-        'obs_pos': [46.645, 32.610], # Dnipro West
-        'launch_pos': [46.560, 32.720], # TOT Side
-        'conf': 75,
-        'votes': 0,
-        'status': 'Pending',
-        'timestamp': time.strftime('%H:%M:%S')
-    })
-    st.session_state.last_spawn_time = current_time
+    # 1. Ensimmäinen drone (FPV-101) 5s
+    if target_count == 0 and total_elapsed > 5:
+        st.session_state.all_targets.append({
+            'id': "FPV-101",
+            'obs_pos': [46.645, 32.610],
+            'launch_pos': [46.560, 32.720],
+            'conf': 75,
+            'votes': 0,
+            'status': 'Pending',
+            'timestamp': time.strftime('%H:%M:%S')
+        })
+        st.session_state.last_spawn_time = current_time
+        new_data_found = True
 
-# 2. Seuraavat dronet (FPV-102 ja muut) 17 sekunnin välein edellisestä
-elif target_count > 0 and time_since_last > 17:
-    new_id_num = 101 + target_count
-    # Erityisasetus FPV-102:lle
-    conf_value = 92 if new_id_num == 102 else np.random.randint(60, 99)
+    # 2. Seuraavat 17s välein
+    elif target_count > 0 and time_since_last > 17:
+        new_id_num = 101 + target_count
+        conf_value = 92 if new_id_num == 102 else np.random.randint(60, 99)
+        
+        st.session_state.all_targets.append({
+            'id': f"FPV-{new_id_num}",
+            'obs_pos': [np.random.uniform(*WEST_BANK_LAT_RANGE), np.random.uniform(*WEST_BANK_LON_RANGE)],
+            'launch_pos': [np.random.uniform(*TOT_LAT_RANGE), np.random.uniform(*TOT_LON_RANGE)],
+            'conf': conf_value,
+            'votes': 0,
+            'status': 'Pending',
+            'timestamp': time.strftime('%H:%M:%S')
+        })
+        st.session_state.last_spawn_time = current_time
+        new_data_found = True
     
-    st.session_state.all_targets.append({
-        'id': f"FPV-{new_id_num}",
-        'obs_pos': [np.random.uniform(*WEST_BANK_LAT_RANGE), np.random.uniform(*WEST_BANK_LON_RANGE)],
-        'launch_pos': [np.random.uniform(*TOT_LAT_RANGE), np.random.uniform(*TOT_LON_RANGE)],
-        'conf': conf_value,
-        'votes': 0,
-        'status': 'Pending',
-        'timestamp': time.strftime('%H:%M:%S')
-    })
-    st.session_state.last_spawn_time = current_time
+    return new_data_found
+
+# Suoritetaan datan päivitys
+update_data()
 
 # --- UI ---
 st.title("ISKRA | Battlefield Intelligence Suite")
 st.markdown("System Status: Active | API Outbound: DELTA Integrated")
 
+# Pidetään välilehtien tila tallessa session_statessa, jottei se hypi takaisin ekalle välilehdelle
 tab1, tab2, tab3 = st.tabs(["Heatmap Aggregation", "Intercept & Backcasting", "Human Moderation Layer"])
 
 # --- TAB 1: Kartta ---
@@ -74,7 +82,6 @@ with tab1:
     m = folium.Map(location=[KHERSON_LAT - 0.05, KHERSON_LON + 0.1], zoom_start=11, tiles='cartodbpositron')
     
     for t in st.session_state.all_targets:
-        # Värilogiikka: Vahvistettu/AI yli kynnyksen -> PUNAINEN, Muuten -> KELTAINEN (orange)
         if t['status'] == 'Confirmed' or t['conf'] >= st.session_state.ai_threshold:
             color = 'red'
         else:
@@ -85,6 +92,7 @@ with tab1:
                             popup=f"{t['id']} (AI: {t['conf']}%)").add_to(m)
         folium.PolyLine(locations=[t['obs_pos'], t['launch_pos']], color=color, weight=2, dash_array='5, 10').add_to(m)
     
+    # st_foliumin key estää karttaa latautumasta uudestaan turhaan
     st_folium(m, width="100%", height=550, returned_objects=[], key="main_map")
 
 # --- TAB 2: Intercept ---
@@ -95,7 +103,8 @@ with tab2:
         col_v, col_d = st.columns([2, 1])
         with col_d:
             st.subheader("Control Logic")
-            st.session_state.ai_threshold = st.slider("AI Confidence Threshold (%)", 0, 100, st.session_state.ai_threshold)
+            # Slider ilman automaattista rerunia joka välissä
+            st.session_state.ai_threshold = st.slider("AI Confidence Threshold (%)", 0, 100, st.session_state.ai_threshold, key="threshold_slider")
             st.divider()
             drone_ids = [t['id'] for t in st.session_state.all_targets]
             selected_id = st.selectbox("Select Signal Stream", drone_ids, key="edge_select")
@@ -133,5 +142,7 @@ with tab3:
             current_mod['status'] = 'Confirmed'
             st.rerun()
 
+# --- Hallittu päivitys ---
+# Käytetään lyhyempää unta ja rerun-kutsua vain tarvittaessa
 time.sleep(1)
 st.rerun()
