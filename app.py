@@ -19,7 +19,7 @@ if 'all_targets' not in st.session_state:
 if 'last_update' not in st.session_state:
     st.session_state.last_update = time.time()
 
-# --- Automaattinen havaintojen generointi (Intercept & Ingest) ---
+# --- Automaattinen havaintojen generointi (5s välein) ---
 current_time = time.time()
 if current_time - st.session_state.last_update > 5:
     new_id = f"FPV-{len(st.session_state.all_targets) + 101}"
@@ -36,9 +36,9 @@ if current_time - st.session_state.last_update > 5:
 
 # --- Yläosa ---
 st.title("ISKRA | Battlefield Intelligence Suite")
-st.markdown(f"System Status: Active | API Outbound: DELTA Integrated")
+st.markdown("System Status: Active | API Outbound: DELTA Integrated")
 
-# Välilehdet prosessikaaviosi mukaisesti
+# Välilehdet
 tab1, tab2, tab3 = st.tabs([
     "Heatmap Aggregation", 
     "Intercept & Backcasting", 
@@ -66,7 +66,6 @@ with tab1:
     
     st_folium(m, width="100%", height=550, returned_objects=[], key="main_map")
     
-    # Tilastot (Operational Picture)
     c1, c2 = st.columns(2)
     c1.metric("Confirmed Targets", len([t for t in st.session_state.all_targets if t['status'] == 'Confirmed']))
     c2.metric("Pending Validation", len([t for t in st.session_state.all_targets if t['status'] == 'Pending']))
@@ -102,8 +101,7 @@ with tab3:
     if not pending_targets:
         st.write("Consensus reached on all current intercepts. Waiting for new ingest data.")
     else:
-        # Valinta moderation layerissa
-        target_options = {f"{t['id']} (AI Confidence: {t['conf']}%)": t['id'] for t in pending_targets}
+        target_options = {f"{t['id']} (AI Conf: {t['conf']}%)": t['id'] for t in pending_targets}
         selected_label = st.selectbox("Assign cluster for human verification:", options=list(target_options.keys()), key="mod_select")
         selected_id = target_options[selected_label]
         
@@ -111,11 +109,13 @@ with tab3:
         
         st.write(f"Vetting {current['id']} | Current Consensus: {current['votes']}/3 Votes")
         
+        # --- KORJATTU KUVAN LATAUS ---
         v_col1, v_col2 = st.columns(2)
         with v_col1:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", caption="Frame Extraction (Still)")
+            # Käytetään yksinkertaisempaa esimerkkikuvaa
+            st.image("https://raw.githubusercontent.com/streamlit/example-app-assets/main/graph.png", caption="Frame Extraction (Still)")
         with v_col2:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Aerial_view_of_Kherson.jpg", caption="Satellite Reference (AO)")
+            st.image("https://raw.githubusercontent.com/streamlit/example-app-assets/main/graph.png", caption="Satellite Reference (AO)")
 
         st.divider()
         
@@ -131,6 +131,6 @@ with tab3:
                     current['status'] = 'Confirmed'
                 st.rerun()
 
-# Automaattinen päivitys (pitää prosessin käynnissä)
+# Automaattinen päivitys
 time.sleep(1)
 st.rerun()
