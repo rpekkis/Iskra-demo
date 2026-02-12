@@ -23,13 +23,13 @@ if 'last_update' not in st.session_state:
 if 'first_spawn_done' not in st.session_state:
     st.session_state.first_spawn_done = False
 if 'ai_threshold' not in st.session_state:
-    st.session_state.ai_threshold = 80 # Oletuskynnys 80%
+    st.session_state.ai_threshold = 80 
 
-# --- Havaintojen logiikka ---
+# --- Havaintojen logiikka (Ajoitukset) ---
 current_time = time.time()
 time_passed = current_time - st.session_state.last_update
 
-# 1. Ensimmäinen havainto (5s kohdalla) - FPV-101 (75%)
+# 1. Ensimmäinen aalto (5s kohdalla) - FPV-101 ja FPV-102
 if not st.session_state.first_spawn_done and time_passed > 5:
     st.session_state.all_targets.append({
         'id': "FPV-101",
@@ -40,7 +40,6 @@ if not st.session_state.first_spawn_done and time_passed > 5:
         'status': 'Pending',
         'timestamp': time.strftime('%H:%M:%S')
     })
-    # Lisätään heti perään FPV-102 (92%) jotta demo on valmis
     st.session_state.all_targets.append({
         'id': "FPV-102",
         'obs_pos': [np.random.uniform(*WEST_BANK_LAT_RANGE), np.random.uniform(*WEST_BANK_LON_RANGE)],
@@ -53,9 +52,10 @@ if not st.session_state.first_spawn_done and time_passed > 5:
     st.session_state.first_spawn_done = True
     st.session_state.last_update = current_time
 
-# 2. Seuraavat havainnot (17s välein) - Random %
+# 2. Seuraavat aallot (17s välein)
 elif st.session_state.first_spawn_done and time_passed > 17:
-    new_id = f"FPV-{101 + len(st.session_state.all_targets)}"
+    new_id_num = 101 + len(st.session_state.all_targets)
+    new_id = f"FPV-{new_id_num}"
     st.session_state.all_targets.append({
         'id': new_id,
         'obs_pos': [np.random.uniform(*WEST_BANK_LAT_RANGE), np.random.uniform(*WEST_BANK_LON_RANGE)],
@@ -75,17 +75,16 @@ tab1, tab2, tab3 = st.tabs(["Heatmap Aggregation", "Intercept & Backcasting", "H
 
 # --- TAB 1: Heatmap ---
 with tab1:
-    st.subheader("Dissemination to Operational Picture")
     m = folium.Map(location=[KHERSON_LAT - 0.05, KHERSON_LON + 0.1], zoom_start=11, tiles='cartodbpositron')
     
     for t in st.session_state.all_targets:
-        # Määritetään väri kynnysarvon ja statuksen perusteella
-        if t['status'] == 'False Positive':
-            color = 'gray'
-        elif t['status'] == 'Confirmed' or t['conf'] >= st.session_state.ai_threshold:
-            color = 'green'
+        # Värilogiikka pyyntösi mukaan:
+        # Jos vahvistettu TAI AI ylittää kynnyksen -> PUNAINEN
+        if t['status'] == 'Confirmed' or t['conf'] >= st.session_state.ai_threshold:
+            color = 'red'
+        # Muuten (eli uusi ja epävarma) -> KELTAINEN
         else:
-            color = 'orange' # Keltainen/Oranssi jos alle kynnyksen eikä vielä vahvistettu
+            color = 'orange' # 'orange' näyttää kartalla selkeämmältä keltaiselta kuin 'yellow'
             
         folium.CircleMarker(location=t['obs_pos'], radius=4, color='blue', fill=True).add_to(m)
         folium.CircleMarker(location=t['launch_pos'], radius=8, color=color, fill=True, 
@@ -94,18 +93,16 @@ with tab1:
     
     st_folium(m, width="100%", height=550, returned_objects=[], key="main_map")
 
-# --- TAB 2: Intercept & Slider ---
+# --- TAB 2: Intercept & Backcasting ---
 with tab2:
     if not st.session_state.all_targets:
-        st.info("Awaiting initial signal intercept...")
+        st.info("Awaiting initial signal intercept (T+5s)...")
     else:
         col_v, col_d = st.columns([2, 1])
         
         with col_d:
             st.subheader("Control Logic")
-            # Slider kynnysarvon säätämiseen
             st.session_state.ai_threshold = st.slider("AI Confidence Threshold (%)", 0, 100, st.session_state.ai_threshold)
-            st.caption("Targets above this threshold are automatically pushed to DELTA (Green).")
             
             st.divider()
             
@@ -114,20 +111,21 @@ with tab2:
             current_drone = next(t for t in st.session_state.all_targets if t['id'] == selected_id)
             
             st.metric("AI Credibility", f"{current_drone['conf']}%")
-            status_text = "AUTO-VERIFIED" if current_drone['conf'] >= st.session_state.ai_threshold else "AWAITING HUMAN"
+            status_text = "CONFIRMED (AI)" if current_drone['conf'] >= st.session_state.ai_threshold else "AWAITING HUMAN"
             st.write(f"**Status:** {status_text}")
 
         with col_v:
             st.subheader("Raw Signal Ingest")
-            video_file = f"video_{selected_id.split('-')[1]}.mp4"
+            suffix = selected_id.split('-')[1]
+            video_file = f"video_{suffix}.mp4"
             if os.path.exists(video_file):
                 st.video(video_file)
             else:
                 st.video("https://www.sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4")
 
-# --- TAB 3: Moderation ---
+# --- TAB 3: Human Moderation Layer ---
 with tab3:
-    # Näytetään vain ne, jotka eivät ole vielä "Confirmed" (mutta ne voivat olla vihreitä kartalla AI:n takia)
+    # Näytetään vain ne, joita ihminen ei ole vielä käsitellyt
     pending_targets = [t for t in st.session_state.all_targets if t['status'] == 'Pending']
     
     if not pending_targets:
@@ -136,8 +134,6 @@ with tab3:
         mod_id = st.selectbox("Assign cluster for human verification:", [t['id'] for t in pending_targets], key="mod_select")
         current_mod = next(t for t in st.session_state.all_targets if t['id'] == mod_id)
         suffix = mod_id.split('-')[1]
-        
-        st.write(f"Vetting {current_mod['id']} | AI Score: {current_mod['conf']}%")
         
         v_col1, v_col2 = st.columns(2)
         with v_col1:
@@ -149,11 +145,11 @@ with tab3:
 
         c1, c2 = st.columns(2)
         if c1.button("REJECT (Swipe Left)", use_container_width=True):
-            current_mod['status'] = 'False Positive'; st.rerun()
+            # POISTETAAN kartalta (filtroidaan pois listasta)
+            st.session_state.all_targets = [t for t in st.session_state.all_targets if t['id'] != mod_id]
+            st.rerun()
         if c2.button("VALIDATE (Swipe Right)", use_container_width=True):
-            current_mod['votes'] += 1
-            if current_mod['votes'] >= 1: # Yksi vahvistus riittää tässä demossa muuttamaan keltaisen vihreäksi
-                current_mod['status'] = 'Confirmed'
+            current_mod['status'] = 'Confirmed'
             st.rerun()
 
 time.sleep(1)
